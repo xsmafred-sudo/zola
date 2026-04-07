@@ -5,6 +5,7 @@ import { fetchClient } from "./fetch"
 import { API_ROUTE_CREATE_GUEST, API_ROUTE_UPDATE_CHAT_MODEL } from "./routes"
 import { createClient } from "./supabase/client"
 import { RateLimiter } from "./auth/rate-limiter"
+import { AccountLockout } from "./auth/account-lockout"
 
 // Initialize rate limiter (singleton pattern)
 let rateLimiter: RateLimiter | null = null
@@ -14,6 +15,16 @@ function getRateLimiter(): RateLimiter {
     rateLimiter = new RateLimiter()
   }
   return rateLimiter
+}
+
+// Initialize account lockout (singleton pattern)
+let accountLockout: AccountLockout | null = null
+
+function getAccountLockout(): AccountLockout {
+  if (!accountLockout) {
+    accountLockout = new AccountLockout()
+  }
+  return accountLockout
 }
 
 /**
@@ -119,11 +130,18 @@ export async function signInWithEmail(
   password: string
 ) {
   const limiter = getRateLimiter()
+  const lockout = getAccountLockout()
 
   // Check rate limit
   const rateLimitResult = await limiter.checkLimit(email, 'login')
   if (!rateLimitResult.allowed) {
     throw new Error('Too many login attempts. Please try again later.')
+  }
+
+  // Check account lockout
+  const lockoutResult = await lockout.checkLockout(email)
+  if (lockoutResult.locked) {
+    throw new Error('Account temporarily locked. Please try again later.')
   }
 
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -132,8 +150,13 @@ export async function signInWithEmail(
   })
 
   if (error) {
+    // Record failed attempt for lockout
+    await lockout.recordFailedAttempt(email)
     throw error
   }
+
+  // Reset lockout on successful login
+  await lockout.resetLockout(email)
 
   if (data.user) {
     const serverClient = await import("./supabase/server-guest")
