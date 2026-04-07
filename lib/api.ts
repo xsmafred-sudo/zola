@@ -1,9 +1,20 @@
-import { APP_DOMAIN } from "@/lib/config"
+import { APP_DOMAIN, MODEL_DEFAULT } from "@/lib/config"
 import type { UserProfile } from "@/lib/user/types"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { fetchClient } from "./fetch"
 import { API_ROUTE_CREATE_GUEST, API_ROUTE_UPDATE_CHAT_MODEL } from "./routes"
 import { createClient } from "./supabase/client"
+import { RateLimiter } from "./auth/rate-limiter"
+
+// Initialize rate limiter (singleton pattern)
+let rateLimiter: RateLimiter | null = null
+
+function getRateLimiter(): RateLimiter {
+  if (!rateLimiter) {
+    rateLimiter = new RateLimiter()
+  }
+  return rateLimiter
+}
 
 /**
  * Creates a guest user record on the server
@@ -100,13 +111,181 @@ export async function updateChatModel(chatId: string, model: string) {
 }
 
 /**
+ * Signs in user with email and password via Supabase
+ */
+export async function signInWithEmail(
+  supabase: SupabaseClient,
+  email: string,
+  password: string
+) {
+  const limiter = getRateLimiter()
+
+  // Check rate limit
+  const rateLimitResult = await limiter.checkLimit(email, 'login')
+  if (!rateLimitResult.allowed) {
+    throw new Error('Too many login attempts. Please try again later.')
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  if (data.user) {
+    const serverClient = await import("./supabase/server-guest")
+    const supabaseServer = await serverClient.createGuestServerClient()
+    if (supabaseServer) {
+      const displayName =
+        data.user.user_metadata?.full_name ??
+        data.user.user_metadata?.name ??
+        null
+
+      const { data: existingUsers } = await supabaseServer
+        .from("users")
+        .select("id")
+        .limit(1)
+
+      const isFirstUser = !existingUsers || existingUsers.length === 0
+
+      const { error: upsertError } = await supabaseServer.from("users").upsert(
+        {
+          id: data.user.id,
+          email: data.user.email ?? "",
+          display_name: displayName || undefined,
+          created_at: new Date().toISOString(),
+          message_count: 0,
+          premium: false,
+          favorite_models: [MODEL_DEFAULT],
+          role: isFirstUser ? "admin" : "user",
+        },
+        { onConflict: "id" }
+      )
+
+      if (upsertError && upsertError.code !== "23505") {
+        console.error("Error upserting user profile:", upsertError)
+      }
+    }
+  }
+
+  return data
+}
+
+/**
+ * Signs up user with email and password via Supabase
+ */
+export async function signUpWithEmail(
+  supabase: SupabaseClient,
+  email: string,
+  password: string,
+  name?: string
+) {
+  const limiter = getRateLimiter()
+
+  // Check rate limit
+  const rateLimitResult = await limiter.checkLimit(email, 'signup')
+  if (!rateLimitResult.allowed) {
+    throw new Error('Too many signup attempts. Please try again later.')
+  }
+
+  const isDev = process.env.NODE_ENV === "development"
+  const baseUrl = isDev
+    ? "http://localhost:3000"
+    : typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_VERCEL_URL
+        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+        : APP_DOMAIN
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: `${baseUrl}/auth/callback`,
+      data: {
+        full_name: name,
+      },
+    },
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
+/**
+ * Sends a password reset email via Supabase
+ */
+export async function sendPasswordResetEmail(
+  supabase: SupabaseClient,
+  email: string
+) {
+  const limiter = getRateLimiter()
+
+  // Check rate limit
+  const rateLimitResult = await limiter.checkLimit(email, 'passwordReset')
+  if (!rateLimitResult.allowed) {
+    throw new Error('Too many password reset attempts. Please try again later.')
+  }
+
+  const isDev = process.env.NODE_ENV === "development"
+  const baseUrl = isDev
+    ? "http://localhost:3000"
+    : typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_VERCEL_URL
+        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+        : APP_DOMAIN
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${baseUrl}/auth/callback`,
+  })
+
+  if (error) {
+    throw error
+  }
+}
+
+/**
+ * Updates the user's password after password reset
+ */
+export async function updatePassword(
+  supabase: SupabaseClient,
+  password: string
+) {
+  const { error } = await supabase.auth.updateUser({
+    password,
+  })
+
+  if (error) {
+    throw error
+  }
+}
+
+/**
  * Signs in user with Google OAuth via Supabase
  */
 export async function signInWithGoogle(supabase: SupabaseClient) {
   try {
+    const limiter = getRateLimiter()
+
+    // For OAuth, we'll use a generic identifier since we don't have email yet
+    // In production, this should be based on IP address or session ID
+    const identifier = 'oauth-google'
+
+    // Check rate limit
+    const rateLimitResult = await limiter.checkLimit(identifier, 'oauth')
+    if (!rateLimitResult.allowed) {
+      throw new Error('Too many OAuth attempts. Please try again later.')
+    }
+
     const isDev = process.env.NODE_ENV === "development"
 
-    // Get base URL dynamically (will work in both browser and server environments)
     const baseUrl = isDev
       ? "http://localhost:3000"
       : typeof window !== "undefined"
@@ -130,10 +309,54 @@ export async function signInWithGoogle(supabase: SupabaseClient) {
       throw error
     }
 
-    // Return the provider URL
     return data
   } catch (err) {
     console.error("Error signing in with Google:", err)
+    throw err
+  }
+}
+
+/**
+ * Signs in user with GitHub OAuth via Supabase
+ */
+export async function signInWithGithub(supabase: SupabaseClient) {
+  try {
+    const limiter = getRateLimiter()
+
+    // For OAuth, we'll use a generic identifier since we don't have email yet
+    // In production, this should be based on IP address or session ID
+    const identifier = 'oauth-github'
+
+    // Check rate limit
+    const rateLimitResult = await limiter.checkLimit(identifier, 'oauth')
+    if (!rateLimitResult.allowed) {
+      throw new Error('Too many OAuth attempts. Please try again later.')
+    }
+
+    const isDev = process.env.NODE_ENV === "development"
+
+    const baseUrl = isDev
+      ? "http://localhost:3000"
+      : typeof window !== "undefined"
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_VERCEL_URL
+          ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+          : APP_DOMAIN
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "github",
+      options: {
+        redirectTo: `${baseUrl}/auth/callback`,
+      },
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return data
+  } catch (err) {
+    console.error("Error signing in with GitHub:", err)
     throw err
   }
 }
