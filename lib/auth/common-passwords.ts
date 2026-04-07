@@ -18,4 +18,4 @@ export const COMMON_PASSWORDS = [
   'monitor', 'monitoring', 'montana', 'orange', 'angel',
   'prince', 'magnum', 'shadow', 'chicago', 'google',
   'nicole', 'chelsea', 'biteme', 'matthew', 'access'
-] as const;
+];
