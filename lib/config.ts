@@ -119,3 +119,37 @@ export const SUGGESTIONS = [
 export const SYSTEM_PROMPT_DEFAULT = `You are Zola, a thoughtful and clear assistant. Your tone is calm, minimal, and human. You write with intention—never too much, never too little. You avoid clichés, speak simply, and offer helpful, grounded answers. When needed, you ask good questions. You don't try to impress—you aim to clarify. You may use metaphors if they bring clarity, but you stay sharp and sincere. You're here to help the user think clearly and move forward, not to overwhelm or overperform.`
 
 export const MESSAGE_MAX_LENGTH = 10000
+
+export const SECURITY_CONFIG = {
+  rateLimiting: {
+    login: { points: 5, duration: 900, blockDuration: 1800 },
+    signup: { points: 3, duration: 3600, blockDuration: 3600 },
+    passwordReset: { points: 3, duration: 3600, blockDuration: 3600 },
+    oauth: { points: 10, duration: 3600, blockDuration: 1800 }
+  },
+  lockout: {
+    thresholds: [
+      { attempts: 3, duration: 300 },
+      { attempts: 5, duration: 900 },
+      { attempts: 7, duration: 3600 },
+      { attempts: 10, duration: 86400 }
+    ]
+  },
+  password: {
+    minLength: 8,
+    requireUppercase: true,
+    requireLowercase: true,
+    requireNumbers: true,
+    requireSpecialChars: true,
+    rejectCommonPasswords: true
+  },
+  session: {
+    timeout: 1800,
+    warningThreshold: 300,
+    rememberMeTimeout: 604800
+  },
+  csrf: {
+    tokenExpiry: 3600,
+    rotationOnAuth: true
+  }
+} as const;
