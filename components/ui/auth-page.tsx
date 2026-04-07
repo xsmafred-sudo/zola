@@ -11,6 +11,7 @@ import {
 import { APP_NAME } from "@/lib/config"
 import { createClient } from "@/lib/supabase/client"
 import { PasswordPolicyValidator } from "@/lib/auth/password-policy"
+import { getAuthErrorMessage, logDetailedError } from "@/lib/auth/error-handler"
 import { motion } from "framer-motion"
 import {
   ArrowLeftIcon,
@@ -67,7 +68,8 @@ export function AuthPage() {
         window.location.href = data.url
       }
     } catch (err: unknown) {
-      setError((err as Error).message || "An unexpected error occurred")
+      logDetailedError(err as Error, { provider: 'google' })
+      setError(getAuthErrorMessage(err as Error))
     } finally {
       setIsLoading(false)
     }
@@ -87,7 +89,8 @@ export function AuthPage() {
         window.location.href = data.url
       }
     } catch (err: unknown) {
-      setError((err as Error).message || "An unexpected error occurred")
+      logDetailedError(err as Error, { provider: 'github' })
+      setError(getAuthErrorMessage(err as Error))
     } finally {
       setIsLoading(false)
     }
@@ -126,7 +129,8 @@ export function AuthPage() {
         setConfirmPassword("")
       }
     } catch (err: unknown) {
-      setError((err as Error).message || "An unexpected error occurred")
+      logDetailedError(err as Error, { mode, email: !!email })
+      setError(getAuthErrorMessage(err as Error))
     } finally {
       setIsLoading(false)
     }
@@ -151,7 +155,8 @@ export function AuthPage() {
         "Password reset email sent! Check your inbox and follow the link."
       )
     } catch (err: unknown) {
-      setError((err as Error).message || "An unexpected error occurred")
+      logDetailedError(err as Error, { action: 'forgot_password', email: !!email })
+      setError(getAuthErrorMessage(err as Error))
     } finally {
       setIsLoading(false)
     }
@@ -182,7 +187,8 @@ export function AuthPage() {
         window.location.href = "/"
       }, 1500)
     } catch (err: unknown) {
-      setError((err as Error).message || "An unexpected error occurred")
+      logDetailedError(err as Error, { action: 'reset_password' })
+      setError(getAuthErrorMessage(err as Error))
     } finally {
       setIsLoading(false)
     }
