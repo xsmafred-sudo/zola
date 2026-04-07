@@ -1,4 +1,4 @@
-import { APP_DOMAIN, MODEL_DEFAULT } from "@/lib/config"
+import { APP_DOMAIN, MODEL_DEFAULT, SECURITY_CONFIG } from "@/lib/config"
 import type { UserProfile } from "@/lib/user/types"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { fetchClient } from "./fetch"
@@ -7,6 +7,7 @@ import { createClient } from "./supabase/client"
 import { RateLimiter } from "./auth/rate-limiter"
 import { AccountLockout } from "./auth/account-lockout"
 import { OAuthSecurity } from "./auth/oauth-security"
+import { PasswordPolicyValidator } from "./auth/password-policy"
 
 // Initialize rate limiter (singleton pattern)
 let rateLimiter: RateLimiter | null = null
@@ -36,6 +37,16 @@ function getOAuthSecurity(): OAuthSecurity {
     oauthSecurity = new OAuthSecurity()
   }
   return oauthSecurity
+}
+
+// Initialize password validator (singleton pattern)
+let passwordValidator: PasswordPolicyValidator | null = null
+
+function getPasswordValidator(): PasswordPolicyValidator {
+  if (!passwordValidator) {
+    passwordValidator = new PasswordPolicyValidator()
+  }
+  return passwordValidator
 }
 
 /**
@@ -254,11 +265,18 @@ export async function signUpWithEmail(
   name?: string
 ) {
   const limiter = getRateLimiter()
+  const validator = getPasswordValidator()
 
   // Check rate limit
   const rateLimitResult = await limiter.checkLimit(email, 'signup')
   if (!rateLimitResult.allowed) {
     throw new Error('Too many signup attempts. Please try again later.')
+  }
+
+  // Validate password before sending to Supabase
+  const passwordValidation = validator.validate(password)
+  if (!passwordValidation.valid) {
+    throw new Error(passwordValidation.errors.join('. '))
   }
 
   const isDev = process.env.NODE_ENV === "development"
@@ -328,6 +346,14 @@ export async function updatePassword(
   supabase: SupabaseClient,
   password: string
 ) {
+  const validator = getPasswordValidator()
+
+  // Validate password before updating
+  const passwordValidation = validator.validate(password)
+  if (!passwordValidation.valid) {
+    throw new Error(passwordValidation.errors.join('. '))
+  }
+
   const { error } = await supabase.auth.updateUser({
     password,
   })
