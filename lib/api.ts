@@ -6,6 +6,7 @@ import { API_ROUTE_CREATE_GUEST, API_ROUTE_UPDATE_CHAT_MODEL } from "./routes"
 import { createClient } from "./supabase/client"
 import { RateLimiter } from "./auth/rate-limiter"
 import { AccountLockout } from "./auth/account-lockout"
+import { OAuthSecurity } from "./auth/oauth-security"
 
 // Initialize rate limiter (singleton pattern)
 let rateLimiter: RateLimiter | null = null
@@ -25,6 +26,16 @@ function getAccountLockout(): AccountLockout {
     accountLockout = new AccountLockout()
   }
   return accountLockout
+}
+
+// Initialize OAuth security (singleton pattern)
+let oauthSecurity: OAuthSecurity | null = null
+
+function getOAuthSecurity(): OAuthSecurity {
+  if (!oauthSecurity) {
+    oauthSecurity = new OAuthSecurity()
+  }
+  return oauthSecurity
 }
 
 /**
@@ -329,9 +340,13 @@ export async function updatePassword(
 /**
  * Signs in user with Google OAuth via Supabase
  */
-export async function signInWithGoogle(supabase: SupabaseClient) {
+export async function signInWithGoogle(
+  supabase: SupabaseClient,
+  request?: Request
+) {
   try {
     const limiter = getRateLimiter()
+    const security = getOAuthSecurity()
 
     // For OAuth, we'll use a generic identifier since we don't have email yet
     // In production, this should be based on IP address or session ID
@@ -342,6 +357,18 @@ export async function signInWithGoogle(supabase: SupabaseClient) {
     if (!rateLimitResult.allowed) {
       throw new Error('Too many OAuth attempts. Please try again later.')
     }
+
+    const userAgent = request?.headers.get('user-agent') || 'unknown'
+
+    const state = security.generateOAuthState()
+    state.userAgent = userAgent
+
+    const pkce = security.generatePKCE()
+
+    await security.storeState({
+      ...state,
+      verifier: pkce.verifier
+    })
 
     const isDev = process.env.NODE_ENV === "development"
 
@@ -360,6 +387,9 @@ export async function signInWithGoogle(supabase: SupabaseClient) {
         queryParams: {
           access_type: "offline",
           prompt: "consent",
+          state: state.state,
+          code_challenge: pkce.challenge,
+          code_challenge_method: "S256"
         },
       },
     })
@@ -378,9 +408,13 @@ export async function signInWithGoogle(supabase: SupabaseClient) {
 /**
  * Signs in user with GitHub OAuth via Supabase
  */
-export async function signInWithGithub(supabase: SupabaseClient) {
+export async function signInWithGithub(
+  supabase: SupabaseClient,
+  request?: Request
+) {
   try {
     const limiter = getRateLimiter()
+    const security = getOAuthSecurity()
 
     // For OAuth, we'll use a generic identifier since we don't have email yet
     // In production, this should be based on IP address or session ID
@@ -391,6 +425,18 @@ export async function signInWithGithub(supabase: SupabaseClient) {
     if (!rateLimitResult.allowed) {
       throw new Error('Too many OAuth attempts. Please try again later.')
     }
+
+    const userAgent = request?.headers.get('user-agent') || 'unknown'
+
+    const state = security.generateOAuthState()
+    state.userAgent = userAgent
+
+    const pkce = security.generatePKCE()
+
+    await security.storeState({
+      ...state,
+      verifier: pkce.verifier
+    })
 
     const isDev = process.env.NODE_ENV === "development"
 
@@ -406,6 +452,11 @@ export async function signInWithGithub(supabase: SupabaseClient) {
       provider: "github",
       options: {
         redirectTo: `${baseUrl}/auth/callback`,
+        queryParams: {
+          state: state.state,
+          code_challenge: pkce.challenge,
+          code_challenge_method: "S256"
+        },
       },
     })
 

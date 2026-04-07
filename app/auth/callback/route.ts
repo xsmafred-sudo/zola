@@ -3,15 +3,26 @@ import { isSupabaseEnabled } from "@/lib/supabase/config"
 import { createClient } from "@/lib/supabase/server"
 import { createGuestServerClient } from "@/lib/supabase/server-guest"
 import { NextResponse } from "next/server"
+import { OAuthSecurity } from "@/lib/auth/oauth-security"
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get("code")
+  const state = searchParams.get("state")
+  const type = searchParams.get("type") ?? "signup"
   const next = searchParams.get("next") ?? "/"
+  const error = searchParams.get("error")
+  const errorDescription = searchParams.get("error_description")
 
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return NextResponse.redirect(
       `${origin}/auth/error?message=${encodeURIComponent("Supabase is not enabled in this deployment.")}`
+    )
+  }
+
+  if (error) {
+    return NextResponse.redirect(
+      `${origin}/auth/error?message=${encodeURIComponent(errorDescription || error)}`
     )
   }
 
@@ -19,6 +30,18 @@ export async function GET(request: Request) {
     return NextResponse.redirect(
       `${origin}/auth/error?message=${encodeURIComponent("Missing authentication code")}`
     )
+  }
+
+  // VALIDATE OAUTH STATE
+  if (state) {
+    const oauthSecurity = new OAuthSecurity()
+    const userAgent = request.headers.get('user-agent') || 'unknown'
+
+    if (!await oauthSecurity.validateState(state, userAgent)) {
+      return NextResponse.redirect(
+        `${origin}/auth/error?message=${encodeURIComponent('Invalid OAuth state. Please try again.')}`
+      )
+    }
   }
 
   const supabase = await createClient()
@@ -30,12 +53,13 @@ export async function GET(request: Request) {
     )
   }
 
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+  const { data, error: exchangeError } =
+    await supabase.auth.exchangeCodeForSession(code)
 
-  if (error) {
-    console.error("Auth error:", error)
+  if (exchangeError) {
+    console.error("Auth error:", exchangeError)
     return NextResponse.redirect(
-      `${origin}/auth/error?message=${encodeURIComponent(error.message)}`
+      `${origin}/auth/error?message=${encodeURIComponent(exchangeError.message)}`
     )
   }
 
@@ -46,15 +70,28 @@ export async function GET(request: Request) {
     )
   }
 
+  const displayName =
+    user.user_metadata?.full_name ?? user.user_metadata?.name ?? null
+  const avatarUrl = user.user_metadata?.avatar_url ?? null
+
   try {
-    // Try to insert user only if not exists
+    const { data: existingUsers } = await supabaseAdmin
+      .from("users")
+      .select("id")
+      .limit(1)
+
+    const isFirstUser = !existingUsers || existingUsers.length === 0
+
     const { error: insertError } = await supabaseAdmin.from("users").insert({
       id: user.id,
       email: user.email,
+      display_name: displayName || undefined,
+      profile_image: avatarUrl || undefined,
       created_at: new Date().toISOString(),
       message_count: 0,
       premium: false,
       favorite_models: [MODEL_DEFAULT],
+      role: isFirstUser ? "admin" : "user",
     })
 
     if (insertError && insertError.code !== "23505") {
@@ -67,7 +104,17 @@ export async function GET(request: Request) {
   const host = request.headers.get("host")
   const protocol = host?.includes("localhost") ? "http" : "https"
 
-  const redirectUrl = `${protocol}://${host}${next}`
-
-  return NextResponse.redirect(redirectUrl)
+  switch (type) {
+    case "recovery":
+      return NextResponse.redirect(`${protocol}://${host}/auth/reset-password`)
+    case "email_change":
+      return NextResponse.redirect(
+        `${protocol}://${host}?message=${encodeURIComponent("Email updated successfully")}`
+      )
+    case "invite":
+      return NextResponse.redirect(`${protocol}://${host}`)
+    case "signup":
+    default:
+      return NextResponse.redirect(`${protocol}://${host}${next}`)
+  }
 }
