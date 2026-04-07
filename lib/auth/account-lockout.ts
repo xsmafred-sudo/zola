@@ -29,32 +29,52 @@ export class AccountLockout {
   }
 
   async checkLockout(
-    email: string
+    email: string,
+    ipAddress?: string
   ): Promise<{
     locked: boolean;
     remainingAttempts: number;
     lockoutEndTime: Date | null;
   }> {
     const emailKey = `lockout:email:${email}`;
+    const ipKey = ipAddress ? `lockout:ip:${ipAddress}` : null;
 
     const emailState = await this.getLockoutState(emailKey);
+    const ipState = ipKey ? await this.getLockoutState(ipKey) : null;
 
     const now = new Date();
 
-    // Check if currently locked
+    // Check if currently locked (either by email or IP)
+    let lockedUntil: Date | null = null;
+
     if (emailState?.lockedUntil) {
-      const lockedUntil = new Date(emailState.lockedUntil);
-      if (lockedUntil > now) {
-        return {
-          locked: true,
-          remainingAttempts: 0,
-          lockoutEndTime: lockedUntil,
-        };
+      const emailLockedUntil = new Date(emailState.lockedUntil);
+      if (emailLockedUntil > now) {
+        lockedUntil = emailLockedUntil;
       }
     }
 
-    // Not locked, return remaining attempts
-    const currentAttempts = (emailState?.attempts || 0);
+    if (ipState?.lockedUntil && !lockedUntil) {
+      const ipLockedUntil = new Date(ipState.lockedUntil);
+      if (ipLockedUntil > now) {
+        lockedUntil = ipLockedUntil;
+      }
+    }
+
+    // If locked, return lockout info
+    if (lockedUntil) {
+      return {
+        locked: true,
+        remainingAttempts: 0,
+        lockoutEndTime: lockedUntil,
+      };
+    }
+
+    // Not locked, return remaining attempts (use the maximum attempts between email and IP)
+    const emailAttempts = emailState?.attempts || 0;
+    const ipAttempts = ipState?.attempts || 0;
+    const currentAttempts = Math.max(emailAttempts, ipAttempts);
+
     const nextThreshold = SECURITY_CONFIG.lockout.thresholds.find(t =>
       t.attempts > currentAttempts
     );
@@ -74,14 +94,24 @@ export class AccountLockout {
     };
   }
 
-  async recordFailedAttempt(email: string): Promise<void> {
+  async recordFailedAttempt(email: string, ipAddress?: string): Promise<void> {
     const emailKey = `lockout:email:${email}`;
+    const ipKey = ipAddress ? `lockout:ip:${ipAddress}` : null;
+
     await this.incrementAttempts(emailKey);
+    if (ipKey) {
+      await this.incrementAttempts(ipKey);
+    }
   }
 
-  async resetLockout(email: string): Promise<void> {
+  async resetLockout(email: string, ipAddress?: string): Promise<void> {
     const emailKey = `lockout:email:${email}`;
+    const ipKey = ipAddress ? `lockout:ip:${ipAddress}` : null;
+
     await this.redis.del(emailKey);
+    if (ipKey) {
+      await this.redis.del(ipKey);
+    }
   }
 
   private async getLockoutState(key: string): Promise<LockoutState | null> {

@@ -122,15 +122,51 @@ export async function updateChatModel(chatId: string, model: string) {
 }
 
 /**
+ * Extracts the client IP address from a Request object.
+ * Handles various proxy configurations and header formats.
+ */
+export function getClientIP(request: Request): string | null {
+  // Try various headers in order of preference
+  const headers = request.headers;
+
+  // x-forwarded-for may contain multiple IPs, take the first one (client IP)
+  const forwardedFor = headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    const ips = forwardedFor.split(',').map(ip => ip.trim());
+    // Return the first IP (client IP), ignoring proxies
+    return ips[0] || null;
+  }
+
+  // x-real-ip is a common header for the real client IP
+  const realIP = headers.get('x-real-ip');
+  if (realIP) {
+    return realIP;
+  }
+
+  // cf-connecting-ip is used by Cloudflare
+  const cfIP = headers.get('cf-connecting-ip');
+  if (cfIP) {
+    return cfIP;
+  }
+
+  // Return null if no IP found
+  return null;
+}
+
+/**
  * Signs in user with email and password via Supabase
  */
 export async function signInWithEmail(
   supabase: SupabaseClient,
   email: string,
-  password: string
+  password: string,
+  request?: Request
 ) {
   const limiter = getRateLimiter()
   const lockout = getAccountLockout()
+
+  // Extract IP address if request is provided
+  const ipAddress = request ? getClientIP(request) : null
 
   // Check rate limit
   const rateLimitResult = await limiter.checkLimit(email, 'login')
@@ -139,7 +175,7 @@ export async function signInWithEmail(
   }
 
   // Check account lockout
-  const lockoutResult = await lockout.checkLockout(email)
+  const lockoutResult = await lockout.checkLockout(email, ipAddress)
   if (lockoutResult.locked) {
     throw new Error('Account temporarily locked. Please try again later.')
   }
@@ -151,12 +187,12 @@ export async function signInWithEmail(
 
   if (error) {
     // Record failed attempt for lockout
-    await lockout.recordFailedAttempt(email)
+    await lockout.recordFailedAttempt(email, ipAddress)
     throw error
   }
 
   // Reset lockout on successful login
-  await lockout.resetLockout(email)
+  await lockout.resetLockout(email, ipAddress)
 
   if (data.user) {
     const serverClient = await import("./supabase/server-guest")
