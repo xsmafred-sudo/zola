@@ -8,6 +8,7 @@ import { RateLimiter } from "./auth/rate-limiter"
 import { AccountLockout } from "./auth/account-lockout"
 import { OAuthSecurity } from "./auth/oauth-security"
 import { PasswordPolicyValidator } from "./auth/password-policy"
+import { validateEmail, validateDisplayName } from "./auth/input-validator"
 
 // Initialize rate limiter (singleton pattern)
 let rateLimiter: RateLimiter | null = null
@@ -190,6 +191,12 @@ export async function signInWithEmail(
   // Extract IP address if request is provided
   const ipAddress = request ? getClientIP(request) : null
 
+  // Validate email
+  const emailValidation = validateEmail(email)
+  if (!emailValidation.valid) {
+    throw new Error(emailValidation.error || 'Invalid email')
+  }
+
   // Check rate limit
   const rateLimitResult = await limiter.checkLimit(email, 'login')
   if (!rateLimitResult.allowed) {
@@ -273,7 +280,21 @@ export async function signUpWithEmail(
     throw new Error('Too many signup attempts. Please try again later.')
   }
 
-  // Validate password before sending to Supabase
+  // Validate email
+  const emailValidation = validateEmail(email)
+  if (!emailValidation.valid) {
+    throw new Error(emailValidation.error || 'Invalid email')
+  }
+
+  // Validate display name if provided
+  if (name) {
+    const nameValidation = validateDisplayName(name)
+    if (!nameValidation.valid) {
+      throw new Error(nameValidation.error || 'Invalid name')
+    }
+  }
+
+  // Validate password using password policy validator
   const passwordValidation = validator.validate(password)
   if (!passwordValidation.valid) {
     throw new Error(passwordValidation.errors.join('. '))
@@ -314,6 +335,12 @@ export async function sendPasswordResetEmail(
   email: string
 ) {
   const limiter = getRateLimiter()
+
+  // Validate email
+  const emailValidation = validateEmail(email)
+  if (!emailValidation.valid) {
+    throw new Error(emailValidation.error || 'Invalid email')
+  }
 
   // Check rate limit
   const rateLimitResult = await limiter.checkLimit(email, 'passwordReset')
