@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createGuestServerClient } from "@/lib/supabase/server-guest"
 import { NextResponse } from "next/server"
 import { OAuthSecurity } from "@/lib/auth/oauth-security"
+import { AuditLogger } from "@/lib/auth/audit-logger"
+import { getClientIP } from "@/lib/api"
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -53,6 +55,11 @@ export async function GET(request: Request) {
     )
   }
 
+  // Initialize audit logger
+  const auditLogger = new AuditLogger(supabaseAdmin)
+  const ipAddress = getClientIP(request) || 'unknown'
+  const userAgent = request.headers.get('user-agent') || 'unknown'
+
   const { data, error: exchangeError } =
     await supabase.auth.exchangeCodeForSession(code)
 
@@ -69,6 +76,9 @@ export async function GET(request: Request) {
       `${origin}/auth/error?message=${encodeURIComponent("Missing user info")}`
     )
   }
+
+  // Log OAuth login event
+  await auditLogger.logOAuthLogin(user.id, user.email, type, ipAddress, userAgent)
 
   const displayName =
     user.user_metadata?.full_name ?? user.user_metadata?.name ?? null

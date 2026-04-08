@@ -8,6 +8,7 @@ import { RateLimiter } from "./auth/rate-limiter"
 import { AccountLockout } from "./auth/account-lockout"
 import { OAuthSecurity } from "./auth/oauth-security"
 import { PasswordPolicyValidator } from "./auth/password-policy"
+import { AuditLogger } from "./auth/audit-logger"
 import { validateEmail, validateDisplayName } from "./auth/input-validator"
 import { rotateCsrfToken } from "./csrf"
 
@@ -49,6 +50,16 @@ function getPasswordValidator(): PasswordPolicyValidator {
     passwordValidator = new PasswordPolicyValidator()
   }
   return passwordValidator
+}
+
+// Initialize audit logger (singleton pattern)
+let auditLogger: AuditLogger | null = null
+
+function getAuditLogger(supabase: SupabaseClient): AuditLogger {
+  if (!auditLogger) {
+    auditLogger = new AuditLogger(supabase)
+  }
+  return auditLogger
 }
 
 /**
@@ -188,9 +199,11 @@ export async function signInWithEmail(
 ) {
   const limiter = getRateLimiter()
   const lockout = getAccountLockout()
+  const logger = getAuditLogger(supabase)
 
-  // Extract IP address if request is provided
-  const ipAddress = request ? getClientIP(request) : null
+  // Extract IP address and user agent if request is provided
+  const ipAddress = request ? getClientIP(request) : 'unknown'
+  const userAgent = request?.headers.get('user-agent') || 'unknown'
 
   // Validate email
   const emailValidation = validateEmail(email)
@@ -218,11 +231,29 @@ export async function signInWithEmail(
   if (error) {
     // Record failed attempt for lockout
     await lockout.recordFailedAttempt(email, ipAddress)
+
+    // Log failed login attempt
+    await logger.logLoginFailure(email, ipAddress, userAgent, error.message)
+
+    // Check if this attempt caused an account lockout
+    const lockoutCheck = await lockout.checkLockout(email, ipAddress)
+    if (lockoutCheck.locked && lockoutCheck.lockoutEndTime) {
+      const lockoutDurationMinutes = Math.ceil(
+        (lockoutCheck.lockoutEndTime.getTime() - Date.now()) / (1000 * 60)
+      )
+      await logger.logAccountLockout(email, ipAddress, userAgent, lockoutDurationMinutes)
+    }
+
     throw error
   }
 
   // Reset lockout on successful login
   await lockout.resetLockout(email, ipAddress)
+
+  // Log successful login
+  if (data.user) {
+    await logger.logLoginSuccess(data.user.id, email, ipAddress, userAgent)
+  }
 
   if (data.user) {
     // Rotate CSRF token on successful authentication
@@ -273,10 +304,16 @@ export async function signUpWithEmail(
   supabase: SupabaseClient,
   email: string,
   password: string,
-  name?: string
+  name?: string,
+  request?: Request
 ) {
   const limiter = getRateLimiter()
   const validator = getPasswordValidator()
+  const logger = getAuditLogger(supabase)
+
+  // Extract IP address and user agent if request is provided
+  const ipAddress = request ? getClientIP(request) : 'unknown'
+  const userAgent = request?.headers.get('user-agent') || 'unknown'
 
   // Check rate limit
   const rateLimitResult = await limiter.checkLimit(email, 'signup')
@@ -328,6 +365,11 @@ export async function signUpWithEmail(
     throw error
   }
 
+  // Log signup event
+  if (data.user) {
+    await logger.logLoginSuccess(data.user.id, email, ipAddress, userAgent)
+  }
+
   return data
 }
 
@@ -336,9 +378,15 @@ export async function signUpWithEmail(
  */
 export async function sendPasswordResetEmail(
   supabase: SupabaseClient,
-  email: string
+  email: string,
+  request?: Request
 ) {
   const limiter = getRateLimiter()
+  const logger = getAuditLogger(supabase)
+
+  // Extract IP address and user agent if request is provided
+  const ipAddress = request ? getClientIP(request) : 'unknown'
+  const userAgent = request?.headers.get('user-agent') || 'unknown'
 
   // Validate email
   const emailValidation = validateEmail(email)
@@ -368,6 +416,9 @@ export async function sendPasswordResetEmail(
   if (error) {
     throw error
   }
+
+  // Log password reset event
+  await logger.logPasswordReset(email, ipAddress, userAgent)
 }
 
 /**
