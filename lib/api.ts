@@ -1,4 +1,4 @@
-import { APP_DOMAIN, MODEL_DEFAULT, SECURITY_CONFIG } from "@/lib/config"
+import { APP_DOMAIN, MODEL_DEFAULT } from "@/lib/config"
 import type { UserProfile } from "@/lib/user/types"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { fetchClient } from "./fetch"
@@ -9,6 +9,7 @@ import { AccountLockout } from "./auth/account-lockout"
 import { OAuthSecurity } from "./auth/oauth-security"
 import { PasswordPolicyValidator } from "./auth/password-policy"
 import { validateEmail, validateDisplayName } from "./auth/input-validator"
+import { rotateCsrfToken } from "./csrf"
 
 // Initialize rate limiter (singleton pattern)
 let rateLimiter: RateLimiter | null = null
@@ -224,6 +225,9 @@ export async function signInWithEmail(
   await lockout.resetLockout(email, ipAddress)
 
   if (data.user) {
+    // Rotate CSRF token on successful authentication
+    await rotateCsrfToken()
+
     const serverClient = await import("./supabase/server-guest")
     const supabaseServer = await serverClient.createGuestServerClient()
     if (supabaseServer) {

@@ -1,7 +1,9 @@
 import { createHash, randomBytes } from "crypto"
 import { cookies } from "next/headers"
+import { SECURITY_CONFIG } from "@/lib/config"
 
 const CSRF_SECRET = process.env.CSRF_SECRET!
+const TOKEN_EXPIRY = SECURITY_CONFIG.csrf.tokenExpiry
 
 export function generateCsrfToken(): string {
   const raw = randomBytes(32).toString("hex")
@@ -27,5 +29,19 @@ export async function setCsrfCookie() {
     httpOnly: false,
     secure: true,
     path: "/",
+    maxAge: TOKEN_EXPIRY,
   })
+}
+
+export async function rotateCsrfToken(): Promise<string> {
+  const cookieStore = await cookies()
+  const newToken = generateCsrfToken()
+  cookieStore.set("csrf_token", newToken, {
+    httpOnly: false,
+    secure: true,
+    path: "/",
+    maxAge: TOKEN_EXPIRY,
+  })
+
+  return newToken
 }
