@@ -11,6 +11,7 @@ import { PasswordPolicyValidator } from "./auth/password-policy"
 import { AuditLogger } from "./auth/audit-logger"
 import { validateEmail, validateDisplayName } from "./auth/input-validator"
 import { rotateCsrfToken } from "./csrf"
+import { checkSessionTimeout } from "./auth/session-manager"
 
 // Initialize rate limiter (singleton pattern)
 let rateLimiter: RateLimiter | null = null
@@ -60,6 +61,30 @@ function getAuditLogger(supabase: SupabaseClient): AuditLogger {
     auditLogger = new AuditLogger(supabase)
   }
   return auditLogger
+}
+
+/**
+ * Checks if the current session is still valid
+ * @param supabase - Supabase client instance
+ * @throws Error if session is expired
+ */
+async function checkSessionValidity(supabase: SupabaseClient): Promise<void> {
+  try {
+    const sessionManager = new checkSessionTimeout(supabase)
+    const sessionResult = await sessionManager.checkSessionTimeout(supabase)
+
+    if (sessionResult.expired) {
+      await sessionManager.handleExpiredSession(supabase)
+      throw new Error('Your session has expired. Please sign in again.')
+    }
+  } catch (error) {
+    // Only throw if it's a session expiration error
+    if (error instanceof Error && error.message.includes('expired')) {
+      throw error
+    }
+    // Otherwise, continue (graceful degradation)
+    console.error('Session validity check failed:', error)
+  }
 }
 
 /**
@@ -197,6 +222,9 @@ export async function signInWithEmail(
   password: string,
   request?: Request
 ) {
+  // Check session validity before processing
+  await checkSessionValidity(supabase)
+
   const limiter = getRateLimiter()
   const lockout = getAccountLockout()
   const logger = getAuditLogger(supabase)
@@ -307,6 +335,9 @@ export async function signUpWithEmail(
   name?: string,
   request?: Request
 ) {
+  // Check session validity before processing
+  await checkSessionValidity(supabase)
+
   const limiter = getRateLimiter()
   const validator = getPasswordValidator()
   const logger = getAuditLogger(supabase)
@@ -381,6 +412,9 @@ export async function sendPasswordResetEmail(
   email: string,
   request?: Request
 ) {
+  // Check session validity before processing
+  await checkSessionValidity(supabase)
+
   const limiter = getRateLimiter()
   const logger = getAuditLogger(supabase)
 
@@ -428,6 +462,9 @@ export async function updatePassword(
   supabase: SupabaseClient,
   password: string
 ) {
+  // Check session validity before processing
+  await checkSessionValidity(supabase)
+
   const validator = getPasswordValidator()
 
   // Validate password before updating

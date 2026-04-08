@@ -1,9 +1,28 @@
 import { updateSession } from "@/utils/supabase/middleware"
 import { NextResponse, type NextRequest } from "next/server"
 import { validateCsrfToken } from "./lib/csrf"
+import { checkSessionTimeout } from "./lib/auth/session-manager"
+import { createClient } from "@/utils/supabase/server"
 
 export async function middleware(request: NextRequest) {
   const response = await updateSession(request)
+
+  // Session timeout check for authenticated users
+  try {
+    const supabase = await createClient()
+    const sessionManager = new checkSessionTimeout(supabase)
+    const sessionResult = await sessionManager.checkSessionTimeout(supabase)
+
+    if (sessionResult.expired) {
+      // Session expired, redirect to login with expired message
+      const loginUrl = new URL('/auth/login', request.url)
+      loginUrl.searchParams.set('session', 'expired')
+      return NextResponse.redirect(loginUrl)
+    }
+  } catch (error) {
+    // If session check fails, continue gracefully (don't block requests)
+    console.error('Session timeout check failed:', error)
+  }
 
   // CSRF protection for state-changing requests
   if (["POST", "PUT", "DELETE"].includes(request.method)) {
