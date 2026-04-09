@@ -1,5 +1,5 @@
-import { Redis } from 'ioredis';
 import { SECURITY_CONFIG } from '@/lib/config';
+import { RedisWithFallback, createAuthRedis, RedisCompatible, REDIS_KEY_PREFIXES } from './redis-fallback';
 
 interface LockoutState {
   attempts: number;
@@ -8,23 +8,20 @@ interface LockoutState {
 }
 
 export class AccountLockout {
-  private redis: Redis;
+  private redis: any;
 
-  constructor(redisUrlOrInstance?: string | Redis) {
+  constructor(redisUrlOrInstance?: string | RedisCompatible) {
     if (redisUrlOrInstance) {
       if (typeof redisUrlOrInstance === 'object' && 'incr' in redisUrlOrInstance) {
-        // It's a Redis client (or mock)
-        this.redis = redisUrlOrInstance as Redis;
+        // It's a Redis client (or mock) - wrap it with proper interface
+        this.redis = redisUrlOrInstance;
       } else {
-        // It's a URL string
-        this.redis = new Redis(redisUrlOrInstance as string);
+        // It's a URL string - use Redis with fallback
+        this.redis = createAuthRedis(typeof redisUrlOrInstance === 'string' ? redisUrlOrInstance : undefined);
       }
     } else {
-      const url = process.env.REDIS_URL;
-      if (!url) {
-        throw new Error('Redis URL is required');
-      }
-      this.redis = new Redis(url);
+      // Use Redis with fallback for high availability
+      this.redis = createAuthRedis();
     }
   }
 
@@ -36,8 +33,8 @@ export class AccountLockout {
     remainingAttempts: number;
     lockoutEndTime: Date | null;
   }> {
-    const emailKey = `lockout:email:${email}`;
-    const ipKey = ipAddress ? `lockout:ip:${ipAddress}` : null;
+    const emailKey = `${REDIS_KEY_PREFIXES.LOCKOUT_EMAIL}${email}`;
+    const ipKey = ipAddress ? `${REDIS_KEY_PREFIXES.LOCKOUT_IP}${ipAddress}` : null;
 
     const emailState = await this.getLockoutState(emailKey);
     const ipState = ipKey ? await this.getLockoutState(ipKey) : null;
@@ -95,8 +92,8 @@ export class AccountLockout {
   }
 
   async recordFailedAttempt(email: string, ipAddress?: string): Promise<void> {
-    const emailKey = `lockout:email:${email}`;
-    const ipKey = ipAddress ? `lockout:ip:${ipAddress}` : null;
+    const emailKey = `${REDIS_KEY_PREFIXES.LOCKOUT_EMAIL}${email}`;
+    const ipKey = ipAddress ? `${REDIS_KEY_PREFIXES.LOCKOUT_IP}${ipAddress}` : null;
 
     await this.incrementAttempts(emailKey);
     if (ipKey) {
@@ -105,8 +102,8 @@ export class AccountLockout {
   }
 
   async resetLockout(email: string, ipAddress?: string): Promise<void> {
-    const emailKey = `lockout:email:${email}`;
-    const ipKey = ipAddress ? `lockout:ip:${ipAddress}` : null;
+    const emailKey = `${REDIS_KEY_PREFIXES.LOCKOUT_EMAIL}${email}`;
+    const ipKey = ipAddress ? `${REDIS_KEY_PREFIXES.LOCKOUT_IP}${ipAddress}` : null;
 
     await this.redis.del(emailKey);
     if (ipKey) {
