@@ -87,7 +87,7 @@ export async function processFiles(
   chatId: string,
   userId: string
 ): Promise<Attachment[]> {
-  const supabase = isSupabaseEnabled ? createClient() : null
+  const supabase = isSupabaseEnabled() ? createClient() : null
   const attachments: Attachment[] = []
 
   for (const file of files) {
@@ -140,7 +140,7 @@ export class FileUploadLimitError extends Error {
 }
 
 export async function checkFileUploadLimit(userId: string) {
-  if (!isSupabaseEnabled) return 0
+  if (!isSupabaseEnabled()) return 0
 
   const supabase = createClient()
 

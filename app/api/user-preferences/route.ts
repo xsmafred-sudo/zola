@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { withCsrfValidation } from "@/lib/auth/csrf-validation"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET() {
@@ -66,7 +67,7 @@ export async function GET() {
   }
 }
 
-export async function PUT(request: NextRequest) {
+const protectedPUT = withCsrfValidation(async (request: NextRequest) => {
   try {
     const supabase = await createClient()
 
@@ -165,4 +166,6 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     )
   }
-}
+})
+
+export { protectedPUT as PUT }

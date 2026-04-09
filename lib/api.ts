@@ -1,5 +1,6 @@
 import { APP_DOMAIN, MODEL_DEFAULT } from "@/lib/config"
 import type { UserProfile } from "@/lib/user/types"
+import { Database } from "@/app/types/database.types"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { fetchClient } from "./fetch"
 import { API_ROUTE_CREATE_GUEST, API_ROUTE_UPDATE_CHAT_MODEL } from "./routes"
@@ -10,8 +11,9 @@ import { OAuthSecurity } from "./auth/oauth-security"
 import { PasswordPolicyValidator } from "./auth/password-policy"
 import { AuditLogger } from "./auth/audit-logger"
 import { validateEmail, validateDisplayName } from "./auth/input-validator"
-import { rotateCsrfToken } from "./csrf"
-import { checkSessionTimeout } from "./auth/session-manager"
+    // Note: CSRF rotation is handled by the server-side auth flow or API calls
+    // to ensure httpOnly cookies are updated securely.
+import { CheckSessionTimeout } from "./auth/session-manager"
 
 // Initialize rate limiter (singleton pattern)
 let rateLimiter: RateLimiter | null = null
@@ -56,9 +58,9 @@ function getPasswordValidator(): PasswordPolicyValidator {
 // Initialize audit logger (singleton pattern)
 let auditLogger: AuditLogger | null = null
 
-function getAuditLogger(supabase: SupabaseClient): AuditLogger {
+function getAuditLogger(supabase: SupabaseClient<Database>): AuditLogger {
   if (!auditLogger) {
-    auditLogger = new AuditLogger(supabase)
+    auditLogger = new AuditLogger(supabase as any)
   }
   return auditLogger
 }
@@ -66,16 +68,28 @@ function getAuditLogger(supabase: SupabaseClient): AuditLogger {
 /**
  * Checks if the current session is still valid
  * @param supabase - Supabase client instance
+ * @param ipAddress - Optional IP address for activity tracking
+ * @param userAgent - Optional user agent for activity tracking
  * @throws Error if session is expired
  */
-async function checkSessionValidity(supabase: SupabaseClient): Promise<void> {
+async function checkSessionValidity(
+  supabase: SupabaseClient<Database>,
+  ipAddress?: string,
+  userAgent?: string
+): Promise<void> {
   try {
-    const sessionManager = new checkSessionTimeout(supabase)
+    const sessionManager = new CheckSessionTimeout(supabase)
     const sessionResult = await sessionManager.checkSessionTimeout(supabase)
 
     if (sessionResult.expired) {
       await sessionManager.handleExpiredSession(supabase)
       throw new Error('Your session has expired. Please sign in again.')
+    }
+
+    // Record activity for valid sessions
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user?.id) {
+      await sessionManager.recordUserActivity(session.user.id, ipAddress, userAgent)
     }
   } catch (error) {
     // Only throw if it's a session expiration error
@@ -83,7 +97,7 @@ async function checkSessionValidity(supabase: SupabaseClient): Promise<void> {
       throw error
     }
     // Otherwise, continue (graceful degradation)
-    console.error('Session validity check failed:', error)
+    console.error('Session validity check failed:', error instanceof Error ? error.message : String(error))
   }
 }
 
@@ -217,21 +231,21 @@ export function getClientIP(request: Request): string | null {
  * Signs in user with email and password via Supabase
  */
 export async function signInWithEmail(
-  supabase: SupabaseClient,
+  supabase: any,
   email: string,
   password: string,
   request?: Request
 ) {
+  // Extract IP address and user agent if request is provided
+  const ipAddress = (request ? getClientIP(request) : 'unknown') ?? 'unknown'
+  const userAgent = request?.headers.get('user-agent') ?? 'unknown'
+
   // Check session validity before processing
-  await checkSessionValidity(supabase)
+  await checkSessionValidity(supabase as any, ipAddress, userAgent)
 
   const limiter = getRateLimiter()
   const lockout = getAccountLockout()
-  const logger = getAuditLogger(supabase)
-
-  // Extract IP address and user agent if request is provided
-  const ipAddress = request ? getClientIP(request) : 'unknown'
-  const userAgent = request?.headers.get('user-agent') || 'unknown'
+  const logger = getAuditLogger(supabase as any)
 
   // Validate email
   const emailValidation = validateEmail(email)
@@ -284,8 +298,7 @@ export async function signInWithEmail(
   }
 
   if (data.user) {
-    // Rotate CSRF token on successful authentication
-    await rotateCsrfToken()
+    // Note: CSRF rotation is handled by the server-side auth flow or API calls
 
     const serverClient = await import("./supabase/server-guest")
     const supabaseServer = await serverClient.createGuestServerClient()
@@ -302,11 +315,11 @@ export async function signInWithEmail(
 
       const isFirstUser = !existingUsers || existingUsers.length === 0
 
-      const { error: upsertError } = await supabaseServer.from("users").upsert(
+      const { error: upsertError } = await (supabaseServer.from("users") as any).upsert(
         {
           id: data.user.id,
           email: data.user.email ?? "",
-          display_name: displayName || undefined,
+          display_name: displayName ?? undefined,
           created_at: new Date().toISOString(),
           message_count: 0,
           premium: false,
@@ -329,22 +342,22 @@ export async function signInWithEmail(
  * Signs up user with email and password via Supabase
  */
 export async function signUpWithEmail(
-  supabase: SupabaseClient,
+  supabase: any,
   email: string,
   password: string,
   name?: string,
   request?: Request
 ) {
+  // Extract IP address and user agent if request is provided
+  const ipAddress = (request ? getClientIP(request) : 'unknown') ?? 'unknown'
+  const userAgent = request?.headers.get('user-agent') ?? 'unknown'
+
   // Check session validity before processing
-  await checkSessionValidity(supabase)
+  await checkSessionValidity(supabase, ipAddress, userAgent)
 
   const limiter = getRateLimiter()
   const validator = getPasswordValidator()
-  const logger = getAuditLogger(supabase)
-
-  // Extract IP address and user agent if request is provided
-  const ipAddress = request ? getClientIP(request) : 'unknown'
-  const userAgent = request?.headers.get('user-agent') || 'unknown'
+  const logger = getAuditLogger(supabase as any)
 
   // Check rate limit
   const rateLimitResult = await limiter.checkLimit(email, 'signup')
@@ -408,19 +421,20 @@ export async function signUpWithEmail(
  * Sends a password reset email via Supabase
  */
 export async function sendPasswordResetEmail(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   email: string,
   request?: Request
 ) {
   // Check session validity before processing
-  await checkSessionValidity(supabase)
+  // Extract IP address and user agent if request is provided
+  const ipAddress = (request ? getClientIP(request) : 'unknown') ?? 'unknown'
+  const userAgent = request?.headers.get('user-agent') ?? 'unknown'
+
+  // Check session validity before processing
+  await checkSessionValidity(supabase as any, ipAddress, userAgent)
 
   const limiter = getRateLimiter()
-  const logger = getAuditLogger(supabase)
-
-  // Extract IP address and user agent if request is provided
-  const ipAddress = request ? getClientIP(request) : 'unknown'
-  const userAgent = request?.headers.get('user-agent') || 'unknown'
+  const logger = getAuditLogger(supabase as any)
 
   // Validate email
   const emailValidation = validateEmail(email)
@@ -459,11 +473,16 @@ export async function sendPasswordResetEmail(
  * Updates the user's password after password reset
  */
 export async function updatePassword(
-  supabase: SupabaseClient,
-  password: string
+  supabase: any,
+  password: string,
+  request?: Request
 ) {
+  // Extract IP address and user agent if request is provided
+  const ipAddress = (request ? getClientIP(request) : 'unknown') ?? 'unknown'
+  const userAgent = request?.headers.get('user-agent') ?? 'unknown'
+
   // Check session validity before processing
-  await checkSessionValidity(supabase)
+  await checkSessionValidity(supabase, ipAddress, userAgent)
 
   const validator = getPasswordValidator()
 
@@ -486,16 +505,18 @@ export async function updatePassword(
  * Signs in user with Google OAuth via Supabase
  */
 export async function signInWithGoogle(
-  supabase: SupabaseClient,
+  supabase: any,
   request?: Request
 ) {
   try {
     const limiter = getRateLimiter()
     const security = getOAuthSecurity()
 
-    // For OAuth, we'll use a generic identifier since we don't have email yet
-    // In production, this should be based on IP address or session ID
-    const identifier = 'oauth-google'
+    // Extract IP address for rate limiting (per-IP rather than global)
+    const ipAddress = request ? getClientIP(request) : 'unknown'
+
+    // Use IP-based identifier for OAuth rate limiting to prevent abuse
+    const identifier = `oauth-google:${ipAddress}`
 
     // Check rate limit
     const rateLimitResult = await limiter.checkLimit(identifier, 'oauth')
@@ -554,16 +575,18 @@ export async function signInWithGoogle(
  * Signs in user with GitHub OAuth via Supabase
  */
 export async function signInWithGithub(
-  supabase: SupabaseClient,
+  supabase: any,
   request?: Request
 ) {
   try {
     const limiter = getRateLimiter()
     const security = getOAuthSecurity()
 
-    // For OAuth, we'll use a generic identifier since we don't have email yet
-    // In production, this should be based on IP address or session ID
-    const identifier = 'oauth-github'
+    // Extract IP address for rate limiting (per-IP rather than global)
+    const ipAddress = request ? getClientIP(request) : 'unknown'
+
+    // Use IP-based identifier for OAuth rate limiting to prevent abuse
+    const identifier = `oauth-github:${ipAddress}`
 
     // Check rate limit
     const rateLimitResult = await limiter.checkLimit(identifier, 'oauth')

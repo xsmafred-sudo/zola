@@ -1,14 +1,19 @@
 import { Database } from "@/app/types/database.types"
 import { createBrowserClient } from "@supabase/ssr"
-import { isSupabaseEnabled } from "./config"
+import { SupabaseClient } from "@supabase/supabase-js"
+import { getSupabaseAnonKey, getSupabaseUrl, isSupabaseEnabled } from "./config"
 
-export function createClient() {
-  if (!isSupabaseEnabled) {
+export function createClient(): any {
+  if (!isSupabaseEnabled()) {
     return null
   }
 
-  return createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const url = getSupabaseUrl()
+  const anonKey = getSupabaseAnonKey()
+
+  if (!url || !anonKey) {
+    return null
+  }
+
+  return createBrowserClient<Database>(url, anonKey)
 }

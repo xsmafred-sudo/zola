@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 export async function signOut() {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     toast({
       title: "Sign out is not supported in this deployment",
       status: "info",

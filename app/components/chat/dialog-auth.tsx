@@ -24,7 +24,7 @@ export function DialogAuth({ open, setOpen }: DialogAuthProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return null
   }
 

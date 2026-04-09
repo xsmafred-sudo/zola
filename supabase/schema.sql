@@ -54,6 +54,34 @@ create table if not exists public.agent_states (
   constraint agent_states_type_length check (char_length(agent_type) <= 50)
 );
 
+-- Leads table for storing discovered leads from discovery agents
+create table if not exists public.leads (
+  id uuid default uuid_generate_v4() primary key,
+  user_id uuid references auth.users on delete set null, -- Null if lead is not associated with a user
+  type text not null check (type in ('person', 'company')),
+  name text not null,
+  title text,
+  company text,
+  industry text,
+  funding text,
+  location text,
+  source text not null, -- e.g., 'linkedin', 'crunchbase'
+  discovered_at timestamp with time zone not null,
+  validation_status text not null default 'pending' check (validation_status in ('pending', 'validated', 'rejected')),
+  raw_data jsonb default '{}'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  constraint leads_type_check check (type in ('person', 'company')),
+  constraint leads_validation_status_check check (validation_status in ('pending', 'validated', 'rejected')),
+  constraint leads_name_length check (char_length(name) <= 200),
+  constraint leads_title_length check (char_length(title) <= 200),
+  constraint leads_company_length check (char_length(company) <= 200),
+  constraint leads_industry_length check (char_length(industry) <= 100),
+  constraint leads_funding_length check (char_length(funding) <= 100),
+  constraint leads_location_length check (char_length(location) <= 200),
+  constraint leads_source_length check (char_length(source) <= 50)
+);
+
 -- Indexes for better query performance
 create index if not exists idx_users_id on public.users(id);
 create index if not exists idx_chats_user_id on public.chats(user_id);

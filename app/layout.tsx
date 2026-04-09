@@ -72,7 +72,7 @@ export default async function RootLayout({
                         enableSystem
                         disableTransitionOnChange
                       >
-                        <SidebarProvider defaultOpen>
+                        <SidebarProvider defaultOpen={false} className="h-screen">
                           <Toaster position="top-center" />
                           {children}
                         </SidebarProvider>

@@ -74,7 +74,7 @@ export function MessageUser({
     const UUIDLength = 36
 
     try {
-      if (isSupabaseEnabled && id && id.length !== UUIDLength) {
+      if (isSupabaseEnabled() && id && id.length !== UUIDLength) {
         // Message IDs failed to sync
         toast({
           title: "Oops, something went wrong",

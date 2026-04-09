@@ -1,5 +1,6 @@
 import { Redis } from 'ioredis';
 import { SECURITY_CONFIG } from '@/lib/config';
+import { RedisWithFallback, createAuthRedis, RedisCompatible, REDIS_KEY_PREFIXES } from './redis-fallback';
 
 interface RateLimitConfig {
   points: number;
@@ -8,18 +9,15 @@ interface RateLimitConfig {
 }
 
 export class RateLimiter {
-  private redis: Redis;
+  private redis: any;
 
   constructor(redisOrUrl?: Redis | string) {
     if (redisOrUrl && typeof redisOrUrl === 'object' && 'incr' in redisOrUrl) {
       // Duck typing check - if it has an incr method, it's a Redis client (or mock)
-      this.redis = redisOrUrl as Redis;
+      this.redis = redisOrUrl;
     } else {
-      const url = redisOrUrl || process.env.REDIS_URL;
-      if (!url) {
-        throw new Error('Redis URL is required');
-      }
-      this.redis = new Redis(url);
+      // Use Redis with fallback for high availability
+      this.redis = createAuthRedis(typeof redisOrUrl === 'string' ? redisOrUrl : undefined);
     }
   }
 
@@ -28,7 +26,7 @@ export class RateLimiter {
     type: 'login' | 'signup' | 'passwordReset' | 'oauth'
   ): Promise<{ allowed: boolean; remaining: number; resetTime: Date }> {
     const config = SECURITY_CONFIG.rateLimiting[type];
-    const key = `ratelimit:${type}:${identifier}`;
+    const key = `${REDIS_KEY_PREFIXES.RATE_LIMIT}${type}:${identifier}`;
 
     const current = await this.redis.incr(key);
 
@@ -37,7 +35,7 @@ export class RateLimiter {
     }
 
     if (current > config.points) {
-      const blockedKey = `ratelimit:blocked:${type}:${identifier}`;
+      const blockedKey = `${REDIS_KEY_PREFIXES.RATE_LIMIT_BLOCKED}${type}:${identifier}`;
       const blocked = await this.redis.get(blockedKey);
 
       if (!blocked) {

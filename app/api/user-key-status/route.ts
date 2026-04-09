@@ -26,6 +26,16 @@ export async function GET() {
       .eq("user_id", authData.user.id)
 
     if (error) {
+      if (error.code === "PGRST205") {
+        const providerStatus = SUPPORTED_PROVIDERS.reduce(
+          (acc, provider) => {
+            acc[provider] = false
+            return acc
+          },
+          {} as Record<string, boolean>
+        )
+        return NextResponse.json(providerStatus)
+      }
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 

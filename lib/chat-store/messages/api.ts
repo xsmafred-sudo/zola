@@ -12,7 +12,7 @@ export async function getMessagesFromDb(
   chatId: string
 ): Promise<MessageAISDK[]> {
   // fallback to local cache only
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     const cached = await getCachedMessages(chatId)
     return cached
   }
@@ -33,7 +33,7 @@ export async function getMessagesFromDb(
     return []
   }
 
-  return data.map((message) => ({
+  return data.map((message: any) => ({
     ...message,
     id: String(message.id),
     content: message.content ?? "",
@@ -48,7 +48,7 @@ export async function getLastMessagesFromDb(
   chatId: string,
   limit: number = 2
 ): Promise<MessageAISDK[]> {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     const cached = await getCachedMessages(chatId)
     return cached.slice(-limit)
   }

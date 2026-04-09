@@ -26,7 +26,7 @@ export function FeedbackWidget({ authUserId }: FeedbackWidgetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const isMobileOrTablet = useBreakpoint(896)
 
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return null
   }
 

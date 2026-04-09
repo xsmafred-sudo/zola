@@ -12,7 +12,7 @@ type Props = {
 export default async function Page({ params }: Props) {
   const { projectId } = await params
 
-  if (isSupabaseEnabled) {
+  if (isSupabaseEnabled()) {
     const supabase = await createClient()
     if (supabase) {
       const { data: userData, error: userError } = await supabase.auth.getUser()

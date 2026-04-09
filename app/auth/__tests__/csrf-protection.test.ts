@@ -41,18 +41,18 @@ describe('CSRF Protection', () => {
 
     (cookies as jest.Mock).mockResolvedValue(mockCookieStore);
 
-    const { rotateCsrfToken } = await import('@/lib/csrf');
+    const { rotateCsrfToken } = await import('@/lib/auth/csrf-server');
 
     const initialToken = generateCsrfToken();
-    const rotatedToken = await rotateCsrfToken();
+    const result = await rotateCsrfToken();
 
-    expect(rotatedToken).not.toBe(initialToken);
-    expect(rotatedToken).toMatch(/^[a-f0-9]{64}:[a-f0-9]{64}$/);
-    expect(mockSet).toHaveBeenCalledWith('csrf_token', rotatedToken, expect.objectContaining({
-      httpOnly: false,
+    expect(result.full).not.toBe(initialToken);
+    expect(result.full).toMatch(/^[a-f0-9]{64}:[a-f0-9]{64}$/);
+    expect(mockSet).toHaveBeenCalledWith('csrf_token', result.full, expect.objectContaining({
+      httpOnly: true, // Updated to match implementation
       secure: true,
       path: '/',
-      maxAge: 3600,
+      sameSite: 'strict', // Updated to match implementation
     }));
   });
 });

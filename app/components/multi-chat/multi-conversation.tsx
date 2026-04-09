@@ -119,8 +119,8 @@ export function MultiModelConversation({
   }, [messageGroups])
 
   return (
-    <div className="relative flex h-full w-full flex-col items-center overflow-y-auto">
-      <ChatContainerRoot className="relative w-full">
+    <div className="relative flex h-full w-full flex-col items-center">
+      <ChatContainerRoot className="relative w-full flex-1">
         <ChatContainerContent
           className="flex w-full flex-col items-center pt-20 pb-[134px]"
           style={{

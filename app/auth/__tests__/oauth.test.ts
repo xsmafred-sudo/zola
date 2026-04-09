@@ -2,10 +2,10 @@
 jest.mock('ioredis', () => {
   return {
     Redis: jest.fn().mockImplementation(() => ({
-      get: jest.fn().mockResolvedValue(null),
-      setex: jest.fn().mockResolvedValue('OK'),
-      del: jest.fn().mockResolvedValue(1),
-      quit: jest.fn().mockResolvedValue('OK'),
+      get: jest.fn().mockReturnValue(Promise.resolve(null)),
+      setex: jest.fn().mockReturnValue(Promise.resolve('OK')),
+      del: jest.fn().mockReturnValue(Promise.resolve(1)),
+      quit: jest.fn().mockReturnValue(Promise.resolve('OK')),
     })),
   };
 });
@@ -38,12 +38,16 @@ describe('OAuthSecurity', () => {
   it('should validate correct state', async () => {
     const oauth = new OAuthSecurity(mockRedisInstance);
     const state = oauth.generateOAuthState();
-    state.userAgent = 'test-agent';
+    state.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124';
 
-    const storedState = JSON.stringify(state);
-    mockRedisInstance.get.mockResolvedValue(storedState);
+    // Use storeState to ensure correct format including fingerprint
+    await oauth.storeState(state);
 
-    const isValid = await oauth.validateState(state.state, 'test-agent');
+    // Get what was stored to mock the get call
+    const storedData = mockRedisInstance.setex.mock.calls[0][2];
+    mockRedisInstance.get.mockReturnValue(Promise.resolve(storedData));
+
+    const isValid = await oauth.validateState(state.state, state.userAgent);
 
     expect(isValid).toBe(true);
     expect(mockRedisInstance.get).toHaveBeenCalledWith(`oauth:state:${state.state}`);
@@ -62,13 +66,15 @@ describe('OAuthSecurity', () => {
   it('should reject expired state', async () => {
     const oauth = new OAuthSecurity(mockRedisInstance);
     const state = oauth.generateOAuthState();
-    state.userAgent = 'test-agent';
+    state.userAgent = 'Mozilla/5.0';
     state.timestamp = Date.now() - 700000; // More than 10 minutes ago
 
-    const storedState = JSON.stringify(state);
-    mockRedisInstance.get.mockResolvedValue(storedState);
+    await oauth.storeState(state);
+    const storedData = JSON.parse(mockRedisInstance.setex.mock.calls[0][2]);
+    storedData.timestamp = state.timestamp; // Manually age it
+    mockRedisInstance.get.mockReturnValue(Promise.resolve(JSON.stringify(storedData)));
 
-    const isValid = await oauth.validateState(state.state, 'test-agent');
+    const isValid = await oauth.validateState(state.state, 'Mozilla/5.0');
 
     expect(isValid).toBe(false);
     expect(mockRedisInstance.del).toHaveBeenCalledWith(`oauth:state:${state.state}`);
@@ -77,12 +83,14 @@ describe('OAuthSecurity', () => {
   it('should reject state with different user agent', async () => {
     const oauth = new OAuthSecurity(mockRedisInstance);
     const state = oauth.generateOAuthState();
-    state.userAgent = 'original-agent';
+    state.userAgent = 'Mozilla/5.0 Firefox/89.0'; // Original agent
 
-    const storedState = JSON.stringify(state);
-    mockRedisInstance.get.mockResolvedValue(storedState);
+    await oauth.storeState(state);
+    const storedData = mockRedisInstance.setex.mock.calls[0][2];
+    mockRedisInstance.get.mockReturnValue(Promise.resolve(storedData));
 
-    const isValid = await oauth.validateState(state.state, 'different-agent');
+    // Current agent is different enough to change fingerprint
+    const isValid = await oauth.validateState(state.state, 'Mozilla/5.0 Chrome/91.0');
 
     expect(isValid).toBe(false);
     expect(mockRedisInstance.del).toHaveBeenCalledWith(`oauth:state:${state.state}`);
@@ -91,13 +99,19 @@ describe('OAuthSecurity', () => {
   it('should store state with expiration', async () => {
     const oauth = new OAuthSecurity(mockRedisInstance);
     const state = oauth.generateOAuthState();
+    state.userAgent = 'test-agent';
 
     await oauth.storeState(state, 600);
 
     expect(mockRedisInstance.setex).toHaveBeenCalledWith(
       `oauth:state:${state.state}`,
       600,
-      JSON.stringify(state)
+      expect.stringContaining(`"state":"${state.state}"`)
+    );
+    expect(mockRedisInstance.setex).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Number),
+      expect.stringContaining('"browserFingerprint"')
     );
   });
 

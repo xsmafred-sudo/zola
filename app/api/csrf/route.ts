@@ -1,15 +1,21 @@
-import { generateCsrfToken } from "@/lib/csrf"
-import { cookies } from "next/headers"
+import { setCsrfCookie } from "@/lib/auth/csrf-server"
 import { NextResponse } from "next/server"
 
 export async function GET() {
-  const token = generateCsrfToken()
-  const cookieStore = await cookies()
-  cookieStore.set("csrf_token", token, {
-    httpOnly: false,
-    secure: true,
-    path: "/",
-  })
+  try {
+    // Generate and set httpOnly CSRF cookie
+    const rawToken = await setCsrfCookie()
 
-  return NextResponse.json({ ok: true })
+    // Return the raw token for client-side use
+    return NextResponse.json({
+      csrfToken: rawToken,
+      ok: true
+    })
+  } catch (error) {
+    console.error("Error generating CSRF token:", error)
+    return NextResponse.json(
+      { error: "Failed to generate CSRF token" },
+      { status: 500 }
+    )
+  }
 }

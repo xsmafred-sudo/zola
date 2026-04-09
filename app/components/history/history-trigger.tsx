@@ -12,7 +12,6 @@ import { CommandHistory } from "./command-history"
 import { DrawerHistory } from "./drawer-history"
 
 type HistoryTriggerProps = {
-  hasSidebar: boolean
   classNameTrigger?: string
   icon?: React.ReactNode
   label?: React.ReactNode | string
@@ -20,7 +19,6 @@ type HistoryTriggerProps = {
 }
 
 export function HistoryTrigger({
-  hasSidebar,
   classNameTrigger,
   icon,
   label,
@@ -49,7 +47,6 @@ export function HistoryTrigger({
     <button
       className={cn(
         "text-muted-foreground hover:text-foreground hover:bg-muted bg-background pointer-events-auto rounded-full p-1.5 transition-colors",
-        hasSidebar ? "hidden" : "block",
         classNameTrigger
       )}
       type="button"

@@ -12,6 +12,7 @@ import { APP_NAME } from "@/lib/config"
 import { createClient } from "@/lib/supabase/client"
 import { PasswordPolicyValidator } from "@/lib/auth/password-policy"
 import { getAuthErrorMessage, logDetailedError } from "@/lib/auth/error-handler"
+import { useCsrfToken } from "@/lib/hooks/use-csrf-token"
 import { motion } from "framer-motion"
 import {
   ArrowLeftIcon,
@@ -44,6 +45,9 @@ export function AuthPage() {
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
+  // Initialize CSRF token protection
+  const { token: csrfToken, isLoading: csrfLoading, error: csrfError } = useCsrfToken()
+
   // Initialize password policy validator
   const passwordValidator = new PasswordPolicyValidator()
   const passwordRequirements = passwordValidator.getRequirements()
@@ -53,6 +57,13 @@ export function AuthPage() {
       setMode("reset-password")
     }
   }, [pathname])
+
+  // Show CSRF error if token fails to load
+  useEffect(() => {
+    if (csrfError && !csrfLoading) {
+      setError("Security token error. Please refresh the page.")
+    }
+  }, [csrfError, csrfLoading])
 
   const handleGoogleSignIn = async () => {
     const supabase = createClient()

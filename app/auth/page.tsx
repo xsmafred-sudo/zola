@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import LoginPage from "./login-page"
 
 export default function AuthPage() {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return notFound()
   }
 

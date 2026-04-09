@@ -12,7 +12,7 @@ export function SystemPromptSection() {
   const { user, updateUser } = useUser()
   const [isLoading, setIsLoading] = useState(false)
   const [prompt, setPrompt] = useState<string | null>(null)
-  const effectivePrompt = prompt ?? user?.system_prompt ?? ""
+  const effectivePrompt = prompt ?? user?.system_prompt ?? null
 
   const savePrompt = async () => {
     if (!user?.id) return
@@ -55,7 +55,7 @@ export function SystemPromptSection() {
           id="system-prompt"
           className="min-h-24 w-full"
           placeholder="Enter a default system prompt for new conversations"
-          value={effectivePrompt}
+          value={effectivePrompt ?? ""}
           onChange={handlePromptChange}
         />
 

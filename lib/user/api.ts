@@ -18,7 +18,7 @@ export async function getSupabaseUser() {
 }
 
 export async function getUserProfile(): Promise<UserProfile | null> {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     // return fake user profile for no supabase
     return {
       id: "guest",
@@ -49,8 +49,10 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
   return {
     ...userProfileData,
-    profile_image: user.user_metadata?.avatar_url ?? "",
-    display_name: user.user_metadata?.name ?? "",
+    profile_image:
+      userProfileData?.profile_image || user.user_metadata?.avatar_url || "",
+    display_name:
+      userProfileData?.display_name || user.user_metadata?.name || "",
     preferences: formattedPreferences,
   } as UserProfile
 }

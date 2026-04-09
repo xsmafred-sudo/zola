@@ -4,6 +4,11 @@ export interface ValidationResult {
 }
 
 /**
+ * Constants for validation
+ */
+const MAX_EMAIL_LENGTH = 254;
+
+/**
  * Validates email address using RFC 5322 compliant regex pattern.
  * Enforces maximum length of 254 characters.
  *
@@ -28,7 +33,7 @@ export function validateEmail(email: string): ValidationResult {
   }
 
   // Enforce maximum length (RFC 5321 specifies 254 characters maximum)
-  if (email.length > 254) {
+  if (email.length > MAX_EMAIL_LENGTH) {
     return { valid: false, error: 'Email address too long (maximum 254 characters)' };
   }
 

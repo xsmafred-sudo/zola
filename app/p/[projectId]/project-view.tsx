@@ -5,7 +5,6 @@ import { Conversation } from "@/app/components/chat/conversation"
 import { useChatOperations } from "@/app/components/chat/use-chat-operations"
 import { useFileUpload } from "@/app/components/chat/use-file-upload"
 import { useModel } from "@/app/components/chat/use-model"
-import { ProjectChatItem } from "@/app/components/layout/sidebar/project-chat-item"
 import { toast } from "@/components/ui/toast"
 import { useChats } from "@/lib/chat-store/chats/provider"
 import { useMessages } from "@/lib/chat-store/messages/provider"
@@ -18,7 +17,7 @@ import { useChat } from "@ai-sdk/react"
 import { ChatCircleIcon } from "@phosphor-icons/react"
 import { useQuery } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "motion/react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useCallback, useMemo, useState } from "react"
 
 type Project = {
@@ -30,6 +29,36 @@ type Project = {
 
 type ProjectViewProps = {
   projectId: string
+}
+
+function ProjectChatItem({
+  chat,
+  formatDate,
+}: {
+  chat: { id: string; title: string | null; updated_at: string | null }
+  formatDate: (date: string) => string
+}) {
+  const router = useRouter()
+
+  return (
+    <button
+      type="button"
+      className="hover:bg-muted flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors"
+      onClick={() => router.push(`/c/${chat.id}`)}
+    >
+      <ChatCircleIcon className="text-muted-foreground shrink-0" size={20} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">
+          {chat.title || "Untitled"}
+        </p>
+        {chat.updated_at && (
+          <p className="text-muted-foreground text-xs">
+            {formatDate(chat.updated_at)}
+          </p>
+        )}
+      </div>
+    </button>
+  )
 }
 
 export function ProjectView({ projectId }: ProjectViewProps) {

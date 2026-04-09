@@ -52,3 +52,7 @@ bun.lockb
 bun.lock
 
 /.cursor
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md

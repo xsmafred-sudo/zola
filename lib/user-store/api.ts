@@ -83,7 +83,7 @@ export function subscribeToUserUpdates(
         table: "users",
         filter: `id=eq.${userId}`,
       },
-      (payload) => {
+      (payload: any) => {
         onUpdate(payload.new as Partial<UserProfile>)
       }
     )
@@ -91,5 +91,40 @@ export function subscribeToUserUpdates(
 
   return () => {
     supabase.removeChannel(channel)
+  }
+}
+
+export async function addLead(lead: any): Promise<boolean> {
+  const supabase = createClient()
+  if (!supabase) return false
+
+  try {
+    const { error } = await supabase.from("leads").insert([
+      {
+        id: lead.id,
+        type: lead.type,
+        name: lead.name,
+        title: lead.title || null,
+        company: lead.company || null,
+        industry: lead.industry || null,
+        funding: lead.funding || null,
+        location: lead.location || null,
+        source: lead.source,
+        discovered_at: lead.discoveredAt,
+        validation_status: lead.validationStatus,
+        raw_data: lead.rawData || {},
+        user_id: lead.userId || null, // Assuming we might want to associate with user
+      },
+    ])
+
+    if (error) {
+      console.error("Failed to add lead:", error)
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.error("Error adding lead:", err)
+    return false
   }
 }

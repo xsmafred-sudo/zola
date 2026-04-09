@@ -39,7 +39,7 @@ export function DialogPublish() {
   const isMobile = useBreakpoint(768)
   const [copied, setCopied] = useState(false)
 
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return null
   }
 

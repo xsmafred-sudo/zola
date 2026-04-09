@@ -1,27 +1,64 @@
 import { updateSession } from "@/utils/supabase/middleware"
 import { NextResponse, type NextRequest } from "next/server"
-import { validateCsrfToken } from "./lib/csrf"
-import { checkSessionTimeout } from "./lib/auth/session-manager"
-import { createClient } from "@/utils/supabase/server"
+import { validateCsrfToken } from "@/lib/auth/csrf-core"
+import { CheckSessionTimeout } from "@/lib/auth/session-manager"
+import { createClient } from "@/lib/supabase/server"
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Define public routes that don't require authentication or session timeout checks
+  const isPublicRoute =
+    pathname.startsWith('/auth') ||           // Auth routes
+    pathname.startsWith('/api') ||             // API routes
+    pathname.startsWith('/_next') ||           // Next.js internal routes
+    pathname.includes('/favicon.ico') ||       // Static files
+    pathname.includes('.svg') ||               // Static assets
+    pathname.includes('.png') ||               // Static assets
+    pathname.includes('.jpg') ||               // Static assets
+    pathname.includes('.jpeg') ||              // Static assets
+    pathname.includes('.gif') ||               // Static assets
+    pathname.includes('.webp') ||              // Static assets
+    pathname.startsWith('/_next/image');     // Next.js images
+
   const response = await updateSession(request)
 
-  // Session timeout check for authenticated users
-  try {
-    const supabase = await createClient()
-    const sessionManager = new checkSessionTimeout(supabase)
-    const sessionResult = await sessionManager.checkSessionTimeout(supabase)
+  // Only perform authentication and session timeout checks for non-public routes
+  if (!isPublicRoute) {
+    try {
+      const supabase = await createClient()
+      if (supabase) {
+        const sessionManager = new CheckSessionTimeout(supabase)
+        const sessionResult = await sessionManager.checkSessionTimeout(supabase)
 
-    if (sessionResult.expired) {
-      // Session expired, redirect to login with expired message
-      const loginUrl = new URL('/auth/login', request.url)
-      loginUrl.searchParams.set('session', 'expired')
-      return NextResponse.redirect(loginUrl)
+        if (sessionResult.expired) {
+          // Session expired, redirect to login with expired message
+          const loginUrl = new URL('/auth', request.url)
+          loginUrl.searchParams.set('session', 'expired')
+          return NextResponse.redirect(loginUrl)
+        }
+
+        const { data: { session } } = await supabase.auth.getSession()
+
+        // If not authenticated and not on public route, redirect to login
+        if (!session) {
+          const loginUrl = new URL('/auth', request.url)
+          loginUrl.searchParams.set('redirectTo', pathname)
+          return NextResponse.redirect(loginUrl)
+        }
+
+        // If authenticated, verify session is valid
+        const { error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) {
+          console.error('Session validation error:', sessionError)
+          const loginUrl = new URL('/auth/login', request.url)
+          loginUrl.searchParams.set('redirectTo', pathname)
+          return NextResponse.redirect(loginUrl)
+        }
+      }
+    } catch (error) {
+      console.error('Authentication check failed:', error)
     }
-  } catch (error) {
-    // If session check fails, continue gracefully (don't block requests)
-    console.error('Session timeout check failed:', error)
   }
 
   // CSRF protection for state-changing requests

@@ -12,7 +12,7 @@ export async function validateUserIdentity(
   userId: string,
   isAuthenticated: boolean
 ) {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return null
   }
 

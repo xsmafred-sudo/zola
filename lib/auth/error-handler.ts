@@ -48,6 +48,14 @@ export function getAuthErrorMessage(error: Error): string {
     return SECURITY_ERRORS.INVALID_EMAIL;
   }
 
+  // Hide account existence to prevent user enumeration
+  if (message.includes('email already registered') ||
+      message.includes('user already registered') ||
+      message.includes('already exists')) {
+    // Use generic message instead of revealing account existence
+    return SECURITY_ERRORS.GENERIC_ERROR;
+  }
+
   if (message.includes('invalid state') ||
       message.includes('state parameter') ||
       message.includes('oauth error') ||

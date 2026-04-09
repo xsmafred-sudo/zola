@@ -1,47 +1,115 @@
 "use client"
 
-import { cn } from "@/lib/utils"
-import * as PopoverPrimitive from "@radix-ui/react-popover"
-import * as React from "react"
+import { cx } from "@/lib/primitive"
+import type { DialogTriggerProps, PopoverProps } from "react-aria-components"
+import {
+  DialogTrigger as DialogTriggerPrimitive,
+  OverlayArrow,
+  Popover as PopoverPrimitive,
+} from "react-aria-components"
+import {
+  DialogBody,
+  DialogClose,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./dialog"
 
-function Popover({
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+const Popover = (props: DialogTriggerProps) => {
+  return <DialogTriggerPrimitive {...props} />
 }
 
-function PopoverTrigger({
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
+const PopoverTitle = DialogTitle
+const PopoverHeader = DialogHeader
+const PopoverBody = DialogBody
+const PopoverFooter = DialogFooter
+
+interface PopoverContentProps extends PopoverProps {
+  arrow?: boolean
+  ref?: React.Ref<HTMLDivElement>
+  side?: "top" | "bottom" | "left" | "right"
+  align?: "start" | "center" | "end"
 }
 
-function PopoverContent({
+const placementMap: Record<string, string> = {
+  top: "top",
+  bottom: "bottom",
+  left: "left",
+  right: "right",
+}
+
+const PopoverContent = ({
+  children,
+  arrow = false,
   className,
-  align = "center",
-  sideOffset = 4,
+  ref,
+  side,
+  align,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+}: PopoverContentProps) => {
+  const offset = props.offset ?? (arrow ? 12 : 8)
+  const placement = side
+    ? align
+      ? `${placementMap[side]} ${align}`
+      : placementMap[side]
+    : undefined
   return (
-    <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
-        data-slot="popover-content"
-        align={align}
-        sideOffset={sideOffset}
-        className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border p-4 shadow-md outline-hidden",
-          className
-        )}
-        {...props}
-      />
-    </PopoverPrimitive.Portal>
+    <PopoverPrimitive
+      ref={ref}
+      offset={offset}
+      placement={placement as PopoverProps["placement"]}
+      className={cx(
+        "[--visual-viewport-vertical-padding:16px] sm:[--visual-viewport-vertical-padding:32px]",
+        "group/popover bg-overlay text-overlay-fg ring-muted-fg/20 dark:ring-border max-w-xs min-w-(--trigger-width) origin-(--trigger-anchor-point) rounded-(--popover-radius) shadow-xs ring outline-hidden drop-shadow-xl transition-transform [--gutter:--spacing(6)] [--popover-radius:var(--radius-xl)] sm:text-sm dark:backdrop-saturate-200 **:[[role=dialog]]:[--gutter:--spacing(6)]",
+        "entering:fade-in exiting:fade-out entering:animate-in exiting:animate-out",
+        "placement-left:entering:slide-in-from-right-1 placement-right:entering:slide-in-from-left-1 placement-top:entering:slide-in-from-bottom-1 placement-bottom:entering:slide-in-from-top-1",
+        "placement-left:exiting:slide-out-to-right-1 placement-right:exiting:slide-out-to-left-1 placement-top:exiting:slide-out-to-bottom-1 placement-bottom:exiting:slide-out-to-top-1",
+        "forced-colors:bg-[Canvas]",
+        className
+      )}
+      {...props}
+    >
+      {(values) => (
+        <>
+          {arrow && (
+            <OverlayArrow className="group">
+              <svg
+                width={12}
+                height={12}
+                viewBox="0 0 12 12"
+                className="fill-overlay stroke-border group-placement-bottom:rotate-180 group-placement-left:-rotate-90 group-placement-right:rotate-90 block forced-colors:fill-[Canvas] forced-colors:stroke-[ButtonBorder]"
+              >
+                <path d="M0 0 L6 6 L12 0" />
+              </svg>
+            </OverlayArrow>
+          )}
+          <div
+            data-slot="popover-inner"
+            className="max-h-[inherit] overflow-y-auto"
+          >
+            {typeof children === "function" ? children(values) : children}
+          </div>
+        </>
+      )}
+    </PopoverPrimitive>
   )
 }
 
-function PopoverAnchor({
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
-  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />
-}
+const PopoverTrigger = DialogTrigger
+const PopoverClose = DialogClose
+const PopoverDescription = DialogDescription
 
-export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor }
+export type { PopoverProps, PopoverContentProps }
+export {
+  Popover,
+  PopoverTrigger,
+  PopoverClose,
+  PopoverDescription,
+  PopoverContent,
+  PopoverBody,
+  PopoverFooter,
+  PopoverHeader,
+  PopoverTitle,
+}

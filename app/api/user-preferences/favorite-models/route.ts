@@ -54,6 +54,12 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("Error updating favorite models:", error)
+      if (error.code === "PGRST205") {
+        return NextResponse.json(
+          { success: false, error: "Table not found in schema cache" },
+          { status: 503 }
+        )
+      }
       return NextResponse.json(
         { error: "Failed to update favorite models" },
         { status: 500 }
@@ -103,6 +109,9 @@ export async function GET() {
 
     if (error) {
       console.error("Error fetching favorite models:", error)
+      if (error.code === "PGRST205") {
+        return NextResponse.json({ favorite_models: [] })
+      }
       return NextResponse.json(
         { error: "Failed to fetch favorite models" },
         { status: 500 }

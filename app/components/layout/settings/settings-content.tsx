@@ -31,9 +31,7 @@ type SettingsContentProps = {
 
 type TabType = "general" | "appearance" | "models" | "connections"
 
-export function SettingsContent({
-  isDrawer = false,
-}: SettingsContentProps) {
+export function SettingsContent({ isDrawer = false }: SettingsContentProps) {
   const [activeTab, setActiveTab] = useState<TabType>("general")
 
   return (
@@ -108,7 +106,7 @@ export function SettingsContent({
             {/* Mobile tabs content */}
             <TabsContent value="general" className="space-y-6 px-6">
               <UserProfile />
-              {isSupabaseEnabled && (
+              {isSupabaseEnabled() && (
                 <>
                   <AccountManagement />
                 </>
@@ -195,7 +193,7 @@ export function SettingsContent({
             <div className="flex-1 overflow-auto px-6 pt-4">
               <TabsContent value="general" className="mt-0 space-y-6">
                 <UserProfile />
-                {isSupabaseEnabled && (
+                {isSupabaseEnabled() && (
                   <>
                     <AccountManagement />
                   </>

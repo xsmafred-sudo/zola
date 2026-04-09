@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 
 export default async function Page() {
-  if (isSupabaseEnabled) {
+  if (isSupabaseEnabled()) {
     const supabase = await createClient()
     if (supabase) {
       const { data: userData, error: userError } = await supabase.auth.getUser()

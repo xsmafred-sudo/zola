@@ -1,20 +1,27 @@
 import type { Database } from "@/app/types/database.types"
 import { createServerClient } from "@supabase/ssr"
-import { isSupabaseEnabled } from "./config"
+import {
+  getSupabaseServiceRole,
+  getSupabaseUrl,
+  isSupabaseEnabled,
+} from "./config"
 
 export async function createGuestServerClient() {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return null
   }
 
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE!,
-    {
-      cookies: {
-        getAll: () => [],
-        setAll: () => {},
-      },
-    }
-  )
+  const url = getSupabaseUrl()
+  const serviceRole = getSupabaseServiceRole()
+
+  if (!url || !serviceRole) {
+    return null
+  }
+
+  return createServerClient<Database>(url, serviceRole, {
+    cookies: {
+      getAll: () => [],
+      setAll: () => {},
+    },
+  })
 }

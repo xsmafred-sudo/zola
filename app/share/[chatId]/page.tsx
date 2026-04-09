@@ -12,7 +12,7 @@ export async function generateMetadata({
 }: {
   params: Promise<{ chatId: string }>
 }): Promise<Metadata> {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return notFound()
   }
 
@@ -54,7 +54,7 @@ export default async function ShareChat({
 }: {
   params: Promise<{ chatId: string }>
 }) {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return notFound()
   }
 

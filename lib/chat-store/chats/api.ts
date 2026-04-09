@@ -82,7 +82,7 @@ export async function createChatInDb(
 }
 
 export async function fetchAndCacheChats(userId: string): Promise<Chats[]> {
-  if (!isSupabaseEnabled) {
+  if (!isSupabaseEnabled()) {
     return await getCachedChats()
   }
 
