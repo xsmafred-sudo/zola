@@ -1,9 +1,17 @@
-import { checkSessionTimeout } from '@/lib/auth/session-manager';
+import { CheckSessionTimeout } from '@/lib/auth/session-manager';
 import { mockSupabaseClient } from './helpers/mocks';
 
 describe('Session Management', () => {
+  let mockActivityTracker: any;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockActivityTracker = {
+      isSessionValid: jest.fn(),
+      getTimeUntilExpiry: jest.fn(),
+      handleExpiredSession: jest.fn(),
+      clearActivity: jest.fn(),
+    };
   });
 
   it('should detect expired sessions', async () => {
@@ -15,6 +23,7 @@ describe('Session Management', () => {
           data: {
             session: {
               user: {
+                id: 'test-user',
                 last_sign_in_at: new Date(Date.now() - 2000000).toISOString()
               }
             }
@@ -22,14 +31,13 @@ describe('Session Management', () => {
           error: null
         }),
         signOut: jest.fn().mockResolvedValue({ error: null })
-      },
-      from: jest.fn().mockReturnValue({
-        insert: jest.fn().mockResolvedValue({ error: null })
-      })
+      }
     };
 
-    const sessionManager = new checkSessionTimeout(mockClient);
-    const result = await sessionManager.checkSessionTimeout(mockClient);
+    mockActivityTracker.isSessionValid.mockResolvedValue(false);
+
+    const sessionManager = new CheckSessionTimeout(mockClient as any, mockActivityTracker);
+    const result = await sessionManager.checkSessionTimeout(mockClient as any);
 
     expect(result.expired).toBe(true);
     expect(result.warning).toBeNull();
@@ -44,6 +52,7 @@ describe('Session Management', () => {
           data: {
             session: {
               user: {
+                id: 'test-user',
                 // 25 minutes ago - within warning threshold (30 min timeout, 5 min warning)
                 last_sign_in_at: new Date(Date.now() - 1500000).toISOString()
               }
@@ -52,14 +61,14 @@ describe('Session Management', () => {
           error: null
         }),
         signOut: jest.fn().mockResolvedValue({ error: null })
-      },
-      from: jest.fn().mockReturnValue({
-        insert: jest.fn().mockResolvedValue({ error: null })
-      })
+      }
     };
 
-    const sessionManager = new checkSessionTimeout(mockClient);
-    const result = await sessionManager.checkSessionTimeout(mockClient);
+    mockActivityTracker.isSessionValid.mockResolvedValue(true);
+    mockActivityTracker.getTimeUntilExpiry.mockResolvedValue(300000); // 5 minutes in ms
+
+    const sessionManager = new CheckSessionTimeout(mockClient as any, mockActivityTracker);
+    const result = await sessionManager.checkSessionTimeout(mockClient as any);
 
     expect(result.expired).toBe(false);
     expect(result.warning).not.toBeNull();
@@ -76,6 +85,7 @@ describe('Session Management', () => {
         getUser: jest.fn().mockResolvedValue({
           data: {
             user: {
+              id: 'test-user',
               last_sign_in_at: new Date(Date.now() - 2000000).toISOString()
             }
           },
@@ -85,22 +95,23 @@ describe('Session Management', () => {
           data: {
             session: {
               user: {
+                id: 'test-user',
                 last_sign_in_at: new Date(Date.now() - 2000000).toISOString()
               }
             }
           },
           error: null
         })
-      },
-      from: jest.fn().mockReturnValue({
-        insert: jest.fn().mockResolvedValue({ error: null })
-      })
+      }
     };
 
-    const sessionManager = new checkSessionTimeout(mockClient);
-    await sessionManager.handleExpiredSession(mockClient);
+    mockActivityTracker.clearActivity.mockResolvedValue(undefined);
+
+    const sessionManager = new CheckSessionTimeout(mockClient as any, mockActivityTracker);
+    await sessionManager.handleExpiredSession(mockClient as any);
 
     expect(mockClient.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(mockActivityTracker.clearActivity).toHaveBeenCalledWith('test-user');
   });
 
   it('should handle sessions that are not expired', async () => {
@@ -112,6 +123,7 @@ describe('Session Management', () => {
           data: {
             session: {
               user: {
+                id: 'test-user',
                 last_sign_in_at: new Date(Date.now() - 100000).toISOString()
               }
             }
@@ -119,14 +131,14 @@ describe('Session Management', () => {
           error: null
         }),
         signOut: jest.fn().mockResolvedValue({ error: null })
-      },
-      from: jest.fn().mockReturnValue({
-        insert: jest.fn().mockResolvedValue({ error: null })
-      })
+      }
     };
 
-    const sessionManager = new checkSessionTimeout(mockClient);
-    const result = await sessionManager.checkSessionTimeout(mockClient);
+    mockActivityTracker.isSessionValid.mockResolvedValue(true);
+    mockActivityTracker.getTimeUntilExpiry.mockResolvedValue(1000000); // Plenty of time
+
+    const sessionManager = new CheckSessionTimeout(mockClient as any, mockActivityTracker);
+    const result = await sessionManager.checkSessionTimeout(mockClient as any);
 
     expect(result.expired).toBe(false);
     expect(result.warning).toBeNull();
@@ -141,6 +153,7 @@ describe('Session Management', () => {
           data: {
             session: {
               user: {
+                id: 'test-user',
                 // Exactly at warning threshold (25 minutes ago = 5 minutes until expiration)
                 last_sign_in_at: new Date(Date.now() - 1500000).toISOString()
               }
@@ -149,14 +162,14 @@ describe('Session Management', () => {
           error: null
         }),
         signOut: jest.fn().mockResolvedValue({ error: null })
-      },
-      from: jest.fn().mockReturnValue({
-        insert: jest.fn().mockResolvedValue({ error: null })
-      })
+      }
     };
 
-    const sessionManager = new checkSessionTimeout(mockClient);
-    const result = await sessionManager.checkSessionTimeout(mockClient);
+    mockActivityTracker.isSessionValid.mockResolvedValue(true);
+    mockActivityTracker.getTimeUntilExpiry.mockResolvedValue(300000); // Exactly 5 minutes (300000 ms)
+
+    const sessionManager = new CheckSessionTimeout(mockClient as any, mockActivityTracker);
+    const result = await sessionManager.checkSessionTimeout(mockClient as any);
 
     expect(result.expired).toBe(false);
     expect(result.warning).not.toBeNull();
@@ -172,6 +185,7 @@ describe('Session Management', () => {
           data: {
             session: {
               user: {
+                id: 'test-user',
                 // Exactly at timeout threshold (30 minutes)
                 last_sign_in_at: new Date(Date.now() - 1800000).toISOString()
               }
@@ -180,14 +194,13 @@ describe('Session Management', () => {
           error: null
         }),
         signOut: jest.fn().mockResolvedValue({ error: null })
-      },
-      from: jest.fn().mockReturnValue({
-        insert: jest.fn().mockResolvedValue({ error: null })
-      })
+      }
     };
 
-    const sessionManager = new checkSessionTimeout(mockClient);
-    const result = await sessionManager.checkSessionTimeout(mockClient);
+    mockActivityTracker.isSessionValid.mockResolvedValue(false);
+
+    const sessionManager = new CheckSessionTimeout(mockClient as any, mockActivityTracker);
+    const result = await sessionManager.checkSessionTimeout(mockClient as any);
 
     expect(result.expired).toBe(true);
     expect(result.warning).toBeNull();
